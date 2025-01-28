@@ -1,65 +1,101 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Settings Management</title>
-    <script>
-        async function fetchSettings() {
-            const response = await fetch('/api/settings');
-            const settings = await response.json();
-            const tableBody = document.getElementById('settings-table-body');
-            tableBody.innerHTML = '';
-
-            settings.forEach(setting => {
-                const row = document.createElement('tr');
-                row.innerHTML = `
-                    <td>${setting.key}</td>
-                    <td>${setting.type}</td>
-                    <td>${setting.group_name || 'N/A'}</td>
-                    <td>${setting.description || 'N/A'}</td>
-                    <td><input type="text" value="${setting.value}" id="value-${setting.id}"></td>
-                    <td><button onclick="updateSetting(${setting.id})">Update</button></td>
-                `;
-                tableBody.appendChild(row);
-            });
-        }
-
-        async function updateSetting(settingId) {
-            const inputValue = document.getElementById(`value-${settingId}`).value;
-
-            const response = await fetch(`/api/settings/${settingId}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ value: inputValue })
-            });
-
-            const result = await response.json();
-            if (response.ok) {
-                alert('Setting updated successfully!');
-                fetchSettings();
-            } else {
-                alert(`Error: ${result.error}`);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', fetchSettings);
-    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 </head>
 <body>
-    <h1>Settings Management</h1>
-    <table border="1" style="width: 100%; text-align: left;">
+    <h1>Settings</h1>
+    <table id="settings-table" border="1">
         <thead>
             <tr>
                 <th>Key</th>
+                <th>Value</th>
                 <th>Type</th>
                 <th>Group</th>
                 <th>Description</th>
-                <th>Value</th>
-                <th>Actions</th>
+                <th>Action</th>
             </tr>
         </thead>
-        <tbody id="settings-table-body"></tbody>
+        <tbody></tbody>
     </table>
+
+    <h1>Core Modules</h1>
+    <table id="modules-table" border="1">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        function loadSettings() {
+            $.get('/settings', function(data) {
+                let rows = '';
+                data.forEach(setting => {
+                    rows += `<tr>
+                        <td>${setting.key}</td>
+                        <td><input type="text" value="${setting.value}" data-id="${setting.id}"></td>
+                        <td>${setting.type}</td>
+                        <td>${setting.group_name || ''}</td>
+                        <td>${setting.description || ''}</td>
+                        <td><button onclick="updateSetting(${setting.id})">Update</button></td>
+                    </tr>`;
+                });
+                $('#settings-table tbody').html(rows);
+            });
+        }
+
+        function loadModules() {
+            $.get('/modules', function(data) {
+                let rows = '';
+                data.forEach(module => {
+                    rows += `<tr style="background-color: ${module.status === 'running' ? 'green' : 'white'};">
+                        <td>${module.key}</td>
+                        <td>${module.status}</td>
+                        <td>
+                            <button onclick="startModule('${module.key}')">ON</button>
+                            <button onclick="stopModule('${module.key}')">OFF</button>
+                        </td>
+                    </tr>`;
+                });
+                $('#modules-table tbody').html(rows);
+            });
+        }
+
+        function updateSetting(id) {
+            const value = $(`input[data-id="${id}"]`).val();
+            $.post('/settings', JSON.stringify({ id, value }), function() {
+                alert('Setting updated successfully');
+            }).fail(function() {
+                alert('Failed to update setting');
+            });
+        }
+
+        function startModule(moduleName) {
+            $.post(`/modules/${moduleName}/start`, function() {
+                loadModules();
+            }).fail(function() {
+                alert('Failed to start module');
+            });
+        }
+
+        function stopModule(moduleName) {
+            $.post(`/modules/${moduleName}/stop`, function() {
+                loadModules();
+            }).fail(function() {
+                alert('Failed to stop module');
+            });
+        }
+
+        $(document).ready(function() {
+            loadSettings();
+            loadModules();
+        });
+    </script>
 </body>
 </html>

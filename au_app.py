@@ -10,7 +10,7 @@ app = Flask(__name__)
 CORS(app)  # Для взаимодействия с фронтендом
 
 # Конфигурация базы данных
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1234567@artphoto-INFPC:5432/postgres'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:1234567@localhost:5432/postgres'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -18,6 +18,7 @@ db = SQLAlchemy(app)
 # Таблица настроек
 class Setting(db.Model):
     __tablename__ = 'settings'
+    __table_args__ = {'schema': 'aurum'}  # Указание схемы aurum
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(255), unique=True, nullable=False)
     value = db.Column(db.Text, nullable=False)
@@ -34,9 +35,12 @@ def run_module(module_name):
     try:
         module = importlib.import_module(module_name)
         if hasattr(module, module_name):
-            running_modules[module_name]["status"] = "running"
             module_function = getattr(module, module_name)
-            module_function()
+            running_modules[module_name]["status"] = "running"
+
+            # Передаем флаг остановки в функцию модуля
+            stop_flag = running_modules[module_name]["stop_flag"]
+            module_function(stop_flag)
         else:
             running_modules[module_name]["status"] = "error"
     except Exception as e:
@@ -93,7 +97,8 @@ def module_action(module_name, action):
         if module_name in running_modules and running_modules[module_name]["status"] == "running":
             return jsonify({"message": "Module already running"}), 400
 
-        running_modules[module_name] = {"thread": None, "status": "starting"}
+        stop_flag = threading.Event()  # Флаг для остановки потока
+        running_modules[module_name] = {"thread": None, "status": "starting", "stop_flag": stop_flag}
         thread = threading.Thread(target=run_module, args=(module_name,), daemon=True)
         running_modules[module_name]["thread"] = thread
         thread.start()
@@ -103,11 +108,13 @@ def module_action(module_name, action):
         if module_name not in running_modules or running_modules[module_name]["status"] != "running":
             return jsonify({"message": "Module not running"}), 400
 
-        # Остановка потока (программа должна предусмотреть флаг для остановки)
+        # Устанавливаем флаг остановки
+        running_modules[module_name]["stop_flag"].set()
         running_modules[module_name]["status"] = "stopped"
         return jsonify({"message": f"Module {module_name} stopped successfully"})
 
     return jsonify({"error": "Invalid action"}), 400
+
 
 if __name__ == '__main__':
     # Создаем контекст приложения для корректной работы с базой данных
